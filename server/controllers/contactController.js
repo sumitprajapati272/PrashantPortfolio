@@ -1,7 +1,9 @@
 const { Resend } = require("resend");
+const supabase = require("../config/supabase");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_PATTERN = /^[+()\d\s-]{7,20}$/;
+
 const SUBJECTS = [
   "General Inquiry",
   "Job Opportunity",
@@ -44,7 +46,6 @@ function validate(body = {}) {
 
 async function sendContactMessage(req, res) {
   try {
-    // Honeypot protection
     if (req.body && req.body.website) {
       return res.status(201).json({ ok: true });
     }
@@ -58,50 +59,64 @@ async function sendContactMessage(req, res) {
       });
     }
 
-    if (!process.env.RESEND_API_KEY) {
-      return res.status(503).json({
-        error: "Email service is not configured on the server.",
+    // 1. Save contact message in Supabase
+    const { error: dbError } = await supabase
+      .from("contact_messages")
+      .insert([{
+        name: values.name,
+        email: values.email,
+        phone: values.phone || null,
+        subject: values.subject,
+        message: values.message,
+      }]);
+
+    if (dbError) {
+      console.error("Supabase save failed:", dbError.message);
+      return res.status(500).json({
+        error: "Unable to save your message. Please try again.",
       });
     }
 
-    if (!process.env.RESEND_FROM_EMAIL || !process.env.CONTACT_TO_EMAIL) {
-      return res.status(503).json({
-        error: "Email sender or receiver is not configured.",
-      });
+    // 2. Send email notification through Resend
+    if (process.env.RESEND_API_KEY &&
+        process.env.RESEND_FROM_EMAIL &&
+        process.env.CONTACT_TO_EMAIL) {
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        const { error: emailError } = await resend.emails.send({
+          from: process.env.RESEND_FROM_EMAIL,
+          to: process.env.CONTACT_TO_EMAIL,
+          replyTo: values.email,
+          subject: `[Portfolio] ${values.subject} — ${values.name}`,
+          text: [
+            `Name: ${values.name}`,
+            `Email: ${values.email}`,
+            `Phone: ${values.phone || "—"}`,
+            `Subject: ${values.subject}`,
+            "",
+            values.message,
+          ].join("\n"),
+        });
+
+        if (emailError) {
+          console.error("Resend email failed:", emailError);
+        }
+      } catch (emailError) {
+        console.error("Resend error:", emailError.message);
+      }
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
-
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL,
-      to: process.env.CONTACT_TO_EMAIL,
-      replyTo: values.email,
-      subject: `[Portfolio] ${values.subject} — ${values.name}`,
-      text: [
-        `Name: ${values.name}`,
-        `Email: ${values.email}`,
-        `Phone: ${values.phone || "—"}`,
-        `Subject: ${values.subject}`,
-        "",
-        values.message,
-      ].join("\n"),
+    return res.status(201).json({
+      ok: true,
+      message: "Your message has been saved successfully.",
     });
 
-    if (error) {
-      console.error("Resend email failed:", error);
-      return res.status(502).json({
-        error: "The message could not be delivered. Please try again later.",
-      });
-    }
-               
-    console.log("Contact email sent:", data?.id);
-
-    return res.status(201).json({ ok: true });
   } catch (error) {
-    console.error("Contact email failed:", error.message);
+    console.error("Contact form error:", error.message);
 
-    return res.status(502).json({
-      error: "The message could not be delivered. Please try again later.",
+    return res.status(500).json({
+      error: "Something went wrong. Please try again later.",
     });
   }
 }
