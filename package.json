@@ -2,7 +2,7 @@
   "name": "prashant-portfolio-mern",
   "version": "1.0.0",
   "private": true,
-  "description": "Prashant Prajapati's portfolio \u2014 MERN stack (MongoDB, Express, React, Node)",
+  "description": "Prashant Prajapati's portfolio — MERN stack (MongoDB, Express, React, Node)",
   "scripts": {
     "install-all": "npm install && npm install --prefix client && npm install --prefix server",
     "dev": "concurrently -n server,client -c blue,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
@@ -13,5 +13,9 @@
   "devDependencies": {
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
+    "mongoose": "^9.12.3"
   }
 }
