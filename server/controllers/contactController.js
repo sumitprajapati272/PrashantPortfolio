@@ -1,4 +1,6 @@
+
 const { Resend } = require("resend");
+const mongoose = require("mongoose");
 const supabase = require("../config/supabase");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -31,13 +33,18 @@ function validate(body = {}) {
 
   const errors = {};
 
-  if (values.name.length < 2) errors.name = "Please enter your name.";
+  if (values.name.length < 2)
+    errors.name = "Please enter your name.";
+
   if (!EMAIL_PATTERN.test(values.email))
     errors.email = "Please enter a valid email address.";
+
   if (values.phone && !PHONE_PATTERN.test(values.phone))
     errors.phone = "Please enter a valid phone number.";
+
   if (!SUBJECTS.includes(values.subject))
     errors.subject = "Please choose a subject.";
+
   if (values.message.length < 10)
     errors.message = "Please write a message of at least 10 characters.";
 
@@ -46,6 +53,7 @@ function validate(body = {}) {
 
 async function sendContactMessage(req, res) {
   try {
+    // Honeypot protection
     if (req.body && req.body.website) {
       return res.status(201).json({ ok: true });
     }
@@ -59,28 +67,73 @@ async function sendContactMessage(req, res) {
       });
     }
 
-    // 1. Save contact message in Supabase
-    const { error: dbError } = await supabase
-      .from("contact_messages")
-      .insert([{
-        name: values.name,
-        email: values.email,
-        phone: values.phone || null,
-        subject: values.subject,
-        message: values.message,
-      }]);
+    const contactData = {
+      name: values.name,
+      email: values.email,
+      phone: values.phone || null,
+      subject: values.subject,
+      message: values.message,
+      createdAt: new Date(),
+    };
 
-    if (dbError) {
-      console.error("Supabase save failed:", dbError.message);
+    // 1. Save in MongoDB
+    const mongoSave = async () => {
+      if (mongoose.connection.readyState !== 1) {
+        throw new Error("MongoDB is not connected.");
+      }
+
+      return mongoose.connection
+        .collection("contact_messages")
+        .insertOne(contactData);
+    };
+
+    // 2. Save in Supabase
+    const supabaseSave = async () => {
+      const { error } = await supabase
+        .from("contact_messages")
+        .insert([{
+          name: values.name,
+          email: values.email,
+          phone: values.phone || null,
+          subject: values.subject,
+          message: values.message,
+        }]);
+
+      if (error) throw error;
+    };
+
+    // Try both databases independently
+    const results = await Promise.allSettled([
+      mongoSave(),
+      supabaseSave(),
+    ]);
+
+    const mongoResult = results[0];
+    const supabaseResult = results[1];
+
+    if (mongoResult.status === "rejected") {
+      console.error("MongoDB save failed:", mongoResult.reason.message);
+    }
+
+    if (supabaseResult.status === "rejected") {
+      console.error("Supabase save failed:", supabaseResult.reason.message);
+    }
+
+    const mongoSaved = mongoResult.status === "fulfilled";
+    const supabaseSaved = supabaseResult.status === "fulfilled";
+
+    if (!mongoSaved && !supabaseSaved) {
       return res.status(500).json({
-        error: "Unable to save your message. Please try again.",
+        error: "Unable to save your message in either database.",
       });
     }
 
-    // 2. Send email notification through Resend
-    if (process.env.RESEND_API_KEY &&
-        process.env.RESEND_FROM_EMAIL &&
-        process.env.CONTACT_TO_EMAIL) {
+    // 3. Send email through Resend
+    if (
+      process.env.RESEND_API_KEY &&
+      process.env.RESEND_FROM_EMAIL &&
+      process.env.CONTACT_TO_EMAIL
+    ) {
       try {
         const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -107,9 +160,16 @@ async function sendContactMessage(req, res) {
       }
     }
 
+    console.log("Contact message save status:", {
+      mongoSaved,
+      supabaseSaved,
+    });
+
     return res.status(201).json({
       ok: true,
-      message: "Your message has been saved successfully.",
+      mongoSaved,
+      supabaseSaved,
+      message: "Your message has been processed.",
     });
 
   } catch (error) {
