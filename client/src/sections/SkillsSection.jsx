@@ -6,7 +6,7 @@ const technicalGroups = [
   { title: "Core Computer Science", subtitle: "Fundamental CS concepts and problem-solving skills.", icon: Layers, skills: ["DSA", "OOP", "Operating Systems", "DBMS", "Computer Networks"] },
   { title: "Backend Development", subtitle: "Building robust, scalable, and secure backend services.", icon: Server, skills: ["Node.js", "Express.js", "REST APIs", "MongoDB", "Scalable API Design", "Socket.IO", "JWT"] },
   { title: "Web Technologies (Frontend)", subtitle: "Creating responsive and user-friendly web interfaces.", icon: Monitor, skills: ["HTML", "CSS", "JavaScript", "React.js"] },
-  { title: "Database", subtitle: "Database management and data storage.", icon: Database, skills: ["MongoDB"] },
+  { title: "Database", subtitle: "Database management and data storage.", icon: Database, skills: ["MongoDB", "PostgreSQL"] }, 
   { title: "AI Evaluation (Ethara AI)", subtitle: "LLM evaluation, instruction following and safety alignment.", icon: Cpu, skills: ["LLM Evaluation", "Instruction & Safety"] },
   { title: "Developer Tools & Environment", subtitle: "Development, version control, and deployment tools.", icon: Terminal, skills: ["Git", "GitHub", "Linux", "Docker", "VS Code"], wide: true },
 ];
